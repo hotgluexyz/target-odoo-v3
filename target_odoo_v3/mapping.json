@@ -1,0 +1,19 @@
+{
+    "ignore":[
+        "null"
+    ],
+    "vendors":{
+        "vendorName":"name",
+        "contactName":"company_name",
+        "emailAddress":"email",
+        "addresses":{
+            "line1":"street",
+            "line2":"street2",
+            "country":"country_code",
+            "city":"city"
+        },
+        "phoneNumbers":{
+            "number":"phone"
+        }
+    }
+}

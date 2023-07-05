@@ -1,6 +1,6 @@
-# target-odoo-v2
+# target-odoo-v3
 
-`target-odoo-v2` is a Singer target for OdooV2.
+`target-odoo-v3` is a Singer target for OdooV3.
 
 Build with the [Meltano Target SDK](https://sdk.meltano.com).
 
@@ -9,7 +9,7 @@ Build with the [Meltano Target SDK](https://sdk.meltano.com).
 - [ ] `Developer TODO:` Update the below as needed to correctly describe the install procedure. For instance, if you do not have a PyPi repo, or if you want users to directly install from your git repo, you can modify this step as appropriate.
 
 ```bash
-pipx install target-odoo-v2
+pipx install target-odoo-v3
 ```
 
 ## Configuration
@@ -22,7 +22,7 @@ A full list of supported settings and capabilities for this
 target is available by running:
 
 ```bash
-target-odoo-v2 --about
+target-odoo-v3 --about
 ```
 
 ### Configure using environment variables
@@ -37,15 +37,15 @@ environment variable is set either in the terminal context or in the `.env` file
 
 ## Usage
 
-You can easily run `target-odoo-v2` by itself or in a pipeline using [Meltano](https://meltano.com/).
+You can easily run `target-odoo-v3` by itself or in a pipeline using [Meltano](https://meltano.com/).
 
 ### Executing the Target Directly
 
 ```bash
-target-odoo-v2 --version
-target-odoo-v2 --help
+target-odoo-v3 --version
+target-odoo-v3 --help
 # Test using the "Carbon Intensity" sample:
-tap-carbon-intensity | target-odoo-v2 --config /path/to/target-odoo-v2-config.json
+tap-carbon-intensity | target-odoo-v3 --config /path/to/target-odoo-v3-config.json
 ```
 
 ## Developer Resources
@@ -61,17 +61,17 @@ poetry install
 
 ### Create and Run Tests
 
-Create tests within the `target_odoo_v2/tests` subfolder and
+Create tests within the `target_odoo_v3/tests` subfolder and
   then run:
 
 ```bash
 poetry run pytest
 ```
 
-You can also test the `target-odoo-v2` CLI interface directly using `poetry run`:
+You can also test the `target-odoo-v3` CLI interface directly using `poetry run`:
 
 ```bash
-poetry run target-odoo-v2 --help
+poetry run target-odoo-v3 --help
 ```
 
 ### Testing with [Meltano](https://meltano.com/)
@@ -88,7 +88,7 @@ Next, install Meltano (if you haven't already) and any needed plugins:
 # Install meltano
 pipx install meltano
 # Initialize meltano within this directory
-cd target-odoo-v2
+cd target-odoo-v3
 meltano install
 ```
 
@@ -96,9 +96,9 @@ Now you can test and orchestrate using Meltano:
 
 ```bash
 # Test invocation:
-meltano invoke target-odoo-v2 --version
+meltano invoke target-odoo-v3 --version
 # OR run a test `elt` pipeline with the Carbon Intensity sample tap:
-meltano elt tap-carbon-intensity target-odoo-v2
+meltano elt tap-carbon-intensity target-odoo-v3
 ```
 
 ### SDK Dev Guide

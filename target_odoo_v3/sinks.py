@@ -600,7 +600,10 @@ class Invoices(OdooV3Sink):
 
         id = self.process_invoice(record)
         if id:
-            state_updates["success"] = True
+            if record.get("id"):
+                state_updates["is_updated"] = True
+            else:
+                state_updates["success"] = True
         else:
             state_updates["success"] = False
             status = False
@@ -621,7 +624,8 @@ class Bills(Invoices):
         if id:
             if record.get("id"):
                 state_updates["is_updated"] = True
-            state_updates["success"] = True
+            else:
+                state_updates["success"] = True
         else:
             state_updates["success"] = False
             status = False

@@ -455,12 +455,12 @@ class Invoices(OdooV3Sink):
         record_processed["move_type"] = inv_type
         record_processed["payment_state"] = "not_paid"
         record_processed["currency_id"] = currency_id
-        if record.get("id"):
-            order_id = record.get("id")
-            self._update_odoo(stream_name, record=record_processed, update_id=order_id)
-        else:
-            # Create the Invoice
-            order_id = self._post_odoo(stream_name, record_processed)
+        # if record.get("id"):
+        #     order_id = record.get("id")
+        #     self._update_odoo(stream_name, record=record_processed, update_id=order_id)
+        # else:
+        # Create the Invoice
+        order_id = self._post_odoo(stream_name, record_processed)
         lines = []
         if order_id:
             # Handle attachments

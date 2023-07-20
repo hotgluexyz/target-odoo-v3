@@ -203,6 +203,7 @@ class TaxRates(OdooV3Sink):
         groups = self.get_tax_group_list()
         status = True
         state_updates = dict()
+        id = None
         if taxes and groups is not None:
             if bool(record.get("is_percent")):
                 amount_type = "percent"
@@ -231,7 +232,7 @@ class TaxRates(OdooV3Sink):
                     f"TaxRate {record.get('name')} with id {tax_id} added to list of tax rates."
                 )
 
-        id = tax_id
+                id = tax_id
         return id, status, state_updates
 
 

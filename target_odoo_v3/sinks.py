@@ -574,7 +574,8 @@ class Invoices(OdooV3Sink):
                         )
             if mark_posted:
                 updated = self._update_odoo(
-                    stream_name, record={"state": "posted"}, update_id=order_id
+                    stream_name, record={"state": "posted"}, update_id=order_id,
+                    action="action_post"
                 )
                 if updated:
                     # We need to verify that bill/invoice is not marked as paid.

@@ -66,15 +66,18 @@ class OdooV3Sink(HotglueSink):
             filters[0].append(["company_type", "=", company_type])
         return self.query_odoo("res.partner", filters)
 
-    def find_account(self, name, account_name=None):
-        filters = [[["name", "=", name]]]
-        if account_name is not None:
-            filters[0].append(["name", "=", account_name])
+    def find_account(self, name, lookup_key="name"):
+        filters = [[[f"{lookup_key}", "=", name]]]
+
         return self.query_odoo("account.account", filters)
 
     def find_country(self, name):
         filters = [[["name", "=", name]]]
         return self.query_odoo("res.country", filters)
+
+    def find_invoice(self, val, field="ref"):
+        filters = [[[field, "=", val]]]
+        return self.query_odoo("account.move", filters)
 
     def get_odoo_taxes(self, name=None):
         filters = []
@@ -455,126 +458,113 @@ class Invoices(OdooV3Sink):
         record_processed["move_type"] = inv_type
         record_processed["payment_state"] = "not_paid"
         record_processed["currency_id"] = currency_id
-        # if record.get("id"):
-        #     order_id = record.get("id")
-        #     self._update_odoo(stream_name, record=record_processed, update_id=order_id)
-        # else:
-        # Create the Invoice
-        order_id = self._post_odoo(stream_name, record_processed)
-        lines = []
-        if order_id:
-            # Handle attachments
-            if record.get("attachments"):
-                # If line item is string, convert to dict
-                if isinstance(record["attachments"], str):
-                    record["attachments"] = json.loads(record["attachments"])
-                attachments = self.get_invoice_attachments(order_id)
 
-                for attachment in record["attachments"]:
-                    existing_attachment = next(
-                        (
-                            inv_attachment
-                            for inv_attachment in attachments
-                            if inv_attachment["name"] == attachment.get("name")
-                        ),
-                        None,
-                    )
-                    # If Attachment already exists, no need to upload again
-                    if not existing_attachment:
+        verify_ref = self.config.get("verify_ref", False)
+        if verify_ref:
+            inv = self.find_invoice(record_processed["ref"])
+            if len(inv) > 0:
+                self.logger.warning(
+                    f"Invoice with ref: {record_processed['ref']} found. Skipping..."
+                )
+
+        # Create the Invoice
+        record_processed["invoice_line_ids"] = []
+        # Add the line items to the order
+        line_items = record.get("lineItems")
+
+        if line_items:
+            # If line item is string, convert to dict
+            if isinstance(line_items, str):
+                line_items = json.loads(line_items)
+
+            # Build the lines
+            for rec in line_items:
+                line_rec = {}
+                # line_rec["move_id"] = order_id
+                # Get matching product in Odoo
+                product = self.find_product(rec["productName"])
+                if len(product) > 0:
+                    product = product[0]
+                else:
+                    product = {}
+                if rec.get("accountNumber"):
+                    account_id = self.find_account(rec["accountNumber"], "code")
+                elif rec.get("accountName"):
+                    account_id = self.find_account(rec["accountName"])
+                else:
+                    account_id = []
+                if len(account_id) == 0:
+                    print("Valid Account name required. Skipping..")
+                    # skip the line
+                    continue
+                account_id = account_id[0]["id"]
+                if product.get("id"):
+                    line_rec["product_id"] = product.get("id")
+
+                if product.get("name"):
+                    line_rec["name"] = product.get("name")
+                elif rec.get("productName"):
+                    line_rec["name"] = rec.get("productName")
+                line_rec["price_unit"] = rec.get("unitPrice")
+                line_rec["quantity"] = rec.get("quantity")
+                line_rec["price_subtotal"] = rec.get("totalPrice")
+                line_rec["discount"] = rec.get("discountAmount", 0)
+
+                if "displayType" in rec:
+                    line_rec["display_type"] = rec["displayType"]
+                    if rec["displayType"] is False:
+                        context_dictionary = {
+                            "lang": "en_US",
+                            "check_move_validity": False,
+                        }
+                else:
+                    # Default to product according to unified schema
+                    line_rec["display_type"] = "product"
+
+                # TODO map these when required.
+                # line_rec["debit"] = 1
+                # line_rec["credit"] = 0
+                # line_rec["tax_repartition_line_id"] = False
+                # line_rec["tax_exigible"] = False
+                # line_rec["recompute_tax_line"] = False
+                # line_rec["predict_from_name"] = False
+                # line_rec["is_rounding_line"] = False
+                # line_rec["exclude_from_invoice_tab"] = False
+                # line_rec["account_internal_type"] = "other"
+                # line_rec["account_internal_group"] = "expense"
+
+                line_rec["currency_id"] = currency_id
+                if rec.get("taxCode"):
+                    tax_detail = self.get_tax_id(rec.get("taxCode"))
+                    if "id" in tax_detail:
+                        line_rec["tax_ids"] = [tax_detail["id"]]  # [3,34]
+
+                line_rec["account_id"] = account_id
+                if rec.get("product_uom_qty"):
+                    line_rec["product_uom_qty"] = int(rec["product_uom_qty"])
+                # Post the line to Odoo
+                record_processed["invoice_line_ids"].append((0, 0, line_rec))
+
+            order_id = self._post_odoo(stream_name, record_processed)
+
+            if order_id:
+                # Handle attachments
+                if record.get("attachments"):
+                    # If line item is string, convert to dict
+                    if isinstance(record["attachments"], str):
+                        record["attachments"] = json.loads(record["attachments"])
+
+                    for attachment in record["attachments"]:
                         self.upload_attachment(
                             order_id, attachment.get("id"), attachment.get("name")
                         )
-            # Add the line items to the order
-            line_items = record.get("lineItems")
 
-            if line_items:
-                existing_line_items = self.get_line_items(order_id)
-                # Create a dictionary of existing line items for easy lookup
-                existing_line_items_dict = {
-                    item["name"]: item for item in existing_line_items
-                }
-
-                # If line item is string, convert to dict
-                if isinstance(line_items, str):
-                    line_items = json.loads(line_items)
-
-                # Build the lines
-                for rec in line_items:
-                    line_rec = {}
-                    line_rec["move_id"] = order_id
-                    # Get matching product in Odoo
-                    product = self.find_product(rec["productName"])
-                    if len(product) > 0:
-                        product = product[0]
-                    else:
-                        product = {}
-
-                    if rec.get("accountName"):
-                        account_id = self.find_account(rec["accountName"])
-                    else:
-                        account_id = []
-                    if len(account_id) == 0:
-                        print("Valid Account name required. Skipping..")
-                        # skip the line
-                        continue
-                    account_id = account_id[0]["id"]
-                    if product.get("id"):
-                        line_rec["product_id"] = product.get("id")
-
-                    if product.get("name"):
-                        line_rec["name"] = product.get("name")
-                    elif rec.get("productName"):
-                        line_rec["name"] = rec.get("productName")
-                    line_rec["price_unit"] = rec.get("unitPrice")
-                    line_rec["quantity"] = rec.get("quantity")
-                    line_rec["price_subtotal"] = rec.get("totalPrice")
-                    line_rec["discount"] = rec.get("discountAmount", 0)
-
-                    if "displayType" in rec:
-                        line_rec["display_type"] = rec["displayType"]
-                        if rec["displayType"] is False:
-                            context_dictionary = {
-                                "lang": "en_US",
-                                "check_move_validity": False,
-                            }
-                    else:
-                        # Default to product according to unified schema
-                        line_rec["display_type"] = "product"
-
-                    # TODO map these when required.
-                    # line_rec["debit"] = 1
-                    # line_rec["credit"] = 0
-                    # line_rec["tax_repartition_line_id"] = False
-                    # line_rec["tax_exigible"] = False
-                    # line_rec["recompute_tax_line"] = False
-                    # line_rec["predict_from_name"] = False
-                    # line_rec["is_rounding_line"] = False
-                    # line_rec["exclude_from_invoice_tab"] = False
-                    # line_rec["account_internal_type"] = "other"
-                    # line_rec["account_internal_group"] = "expense"
-
-                    line_rec["currency_id"] = currency_id
-                    if rec.get("taxCode"):
-                        tax_detail = self.get_tax_id(rec.get("taxCode"))
-                        if "id" in tax_detail:
-                            line_rec["tax_ids"] = [tax_detail["id"]]  # [3,34]
-
-                    line_rec["account_id"] = account_id
-                    if rec.get("product_uom_qty"):
-                        line_rec["product_uom_qty"] = int(rec["product_uom_qty"])
-
-                    if line_rec["name"] in existing_line_items_dict:
-                        line_item_id = existing_line_items_dict[line_rec["name"]]["id"]
-                        # Update line item.
-                        self._update_odoo(f"{stream_name}.line", line_rec, line_item_id)
-                    else:
-                        # Post the line to Odoo
-                        self._post_odoo(
-                            f"{stream_name}.line", line_rec, context_dictionary
-                        )
             if mark_posted:
                 updated = self._update_odoo(
-                    stream_name, record={"state": "posted"}, update_id=order_id
+                    stream_name,
+                    record={"state": "posted"},
+                    update_id=order_id,
+                    action="action_post",
                 )
                 if updated:
                     # We need to verify that bill/invoice is not marked as paid.

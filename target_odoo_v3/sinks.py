@@ -56,8 +56,8 @@ class OdooV3Sink(HotglueSink):
         filters = [[["name", "=", parnter_name]]]
         return self.query_odoo("res.partner", filters)
 
-    def find_product(self, product_name):
-        filters = [[["name", "=", product_name]]]
+    def find_product(self, field_value, field="name"):
+        filters = [[[field, "=", field_value]]]
         return self.query_odoo("product.product", filters)
 
     def find_company(self, name, company_type=None):
@@ -290,7 +290,77 @@ class Suppliers(Vendors):
 
 class PurchaseInvoices(OdooV3Sink):
     endpoint = "PurchaseInvoices"
-    name = "PurchaseInvoices"
+    name = "BuyOrders"
+
+    def map_purchase_order(self, record):
+        record_processed = {"state": "purchase"}
+        # Get the supplier in odoo
+        partner = self.find_parnter(record["supplier_name"])
+        if len(partner) > 0:
+            record_processed["partner_id"] = partner[0]["id"]
+
+        # Parse dates into correct format
+        if record.get("transaction_date"):
+            if isinstance(record["transaction_date"], str):
+                create_date = parse(record["transaction_date"]).strftime("%Y-%m-%d")
+            else:
+                create_date = record["transaction_date"].strftime("%Y-%m-%d")
+            
+        record_processed["date_order"] = create_date
+
+        # Map invoice name to number
+        record_processed["name"] = record["id"]
+
+        return record_processed
+
+    def process_purchase_invoice(self, record):
+        record_processed = self.map_purchase_order(record)
+        # Create the purchase order
+        stream_name = "purchase.order"
+        order_id = self._post_odoo(stream_name, record_processed)
+
+        if order_id:
+            # Add the line items to the order
+            line_items = record.get("line_items")
+
+            if line_items:
+                # If line item is string, convert to dict
+                if isinstance(line_items, str):
+                    line_items = json.loads(line_items)
+
+                # Build the lines
+                for rec in line_items:
+                    line_rec = {}
+                    line_rec["order_id"] = order_id
+                    # Get matching product in Odoo
+                    product = self.find_product(rec["sku"], "default_code")
+                    if len(product) > 0:
+                        product = product[0]
+                        line_rec["product_id"] = product["id"]
+                        line_rec["name"] = product["name"]
+                        line_rec["price_unit"] = product["list_price"]
+                        line_rec["product_qty"] = rec["quantity"]
+                        line_rec["price_total"] = product["list_price"] * rec["quantity"]
+                        # Post the line to Odoo
+                        self._post_odoo(f"{stream_name}.line", line_rec)
+        return order_id
+
+    def upsert_record(self, record: dict, context: dict):
+        status = True
+        state_updates = dict()
+
+        id = self.process_purchase_invoice(record)
+        if id:
+            state_updates["success"] = True
+        else:
+            state_updates["success"] = False
+            status = False
+        return id, status, state_updates
+
+
+class PurchaseOrder(OdooV3Sink):
+    endpoint = "PurchaseInvoices"
+    name = "PurchaseOrder"
 
     def map_purchase_order(self, record):
         record_processed = {"state": "purchase"}

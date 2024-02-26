@@ -333,7 +333,7 @@ class PurchaseInvoices(OdooV3Sink):
                     line_rec = {}
                     line_rec["order_id"] = order_id
                     # Get matching product in Odoo
-                    product = self.find_product(rec["sku"], "default_code")
+                    product = self.find_product(rec["product_remoteId"], "id")
                     if len(product) > 0:
                         product = product[0]
                         line_rec["product_id"] = product["id"]

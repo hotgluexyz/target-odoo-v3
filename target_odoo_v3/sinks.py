@@ -104,6 +104,9 @@ class OdooV3Sink(HotglueSink):
     def _post_odoo(self, stream_name, record, context=None):
         password = str(self._config.get("password"))
         db = self._config.get("db")
+        #Log all of the payloads except for the attachments
+        if stream_name != "ir.attachment":
+            self.logger.info(f" Posting {self.name}: {stream_name} - {record}")
 
         models = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/object")
         self.models = models
@@ -131,6 +134,9 @@ class OdooV3Sink(HotglueSink):
     ):
         password = str(self._config.get("password"))
         db = self._config.get("db")
+        # Log all of the payloads except for the attachments
+        if stream_name != "ir.attachment":
+            self.logger.info(f" Updating {self.name}: {stream_name} - {record}")
 
         models = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/object")
         self.models = models

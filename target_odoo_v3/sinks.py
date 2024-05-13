@@ -344,9 +344,7 @@ class PurchaseInvoices(OdooV3Sink):
                         product = product[0]
                         line_rec["product_id"] = product["id"]
                         line_rec["name"] = product["name"]
-                        line_rec["price_unit"] = product["list_price"]
                         line_rec["product_qty"] = rec["quantity"]
-                        line_rec["price_total"] = product["list_price"] * rec["quantity"]
                         # Post the line to Odoo
                         self._post_odoo(f"{stream_name}.line", line_rec)
         return order_id

@@ -302,7 +302,7 @@ class PurchaseInvoices(OdooV3Sink):
         record_processed = {"state": "purchase"}
 
         if record.get("supplier_remoteId"):
-            record_processed["partner_id"] = record("supplier_remoteId")
+            record_processed["partner_id"] = record["supplier_remoteId"]
         else:
             # Get the supplier in odoo
             partner = self.find_parnter(record["supplier_name"])

@@ -300,10 +300,14 @@ class PurchaseInvoices(OdooV3Sink):
 
     def map_purchase_order(self, record):
         record_processed = {"state": "purchase"}
-        # Get the supplier in odoo
-        partner = self.find_parnter(record["supplier_name"])
-        if len(partner) > 0:
-            record_processed["partner_id"] = partner[0]["id"]
+
+        if record["supplier_remoteId"]:
+            record_processed["partner_id"] = record["supplier_remoteId"]
+        else:
+            # Get the supplier in odoo
+            partner = self.find_parnter(record["supplier_name"])
+            if len(partner) > 0:
+                record_processed["partner_id"] = partner[0]["id"]
 
         # Parse dates into correct format
         if record.get("transaction_date"):

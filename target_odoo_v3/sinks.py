@@ -318,8 +318,13 @@ class PurchaseInvoices(OdooV3Sink):
             
         record_processed["date_order"] = create_date
 
-        # Map invoice name to number
-        record_processed["name"] = record["id"]
+        # Set name if id exists, otherwise let Odoo auto-generate
+        if record.get("id"):
+            record_processed["name"] = record["id"]
+        
+        # Set origin if provided in the record
+        if record.get("origin"):
+            record_processed["origin"] = record["origin"]
 
         return record_processed
 
@@ -349,6 +354,11 @@ class PurchaseInvoices(OdooV3Sink):
                         line_rec["product_id"] = product["id"]
                         line_rec["name"] = product["name"]
                         line_rec["product_qty"] = rec["quantity"]
+                        
+                        # Calculate unit price from sub_total_price
+                        if rec.get("sub_total_price"):
+                            line_rec["price_unit"] = rec["sub_total_price"] / rec["quantity"]
+                        
                         # Post the line to Odoo
                         self._post_odoo(f"{stream_name}.line", line_rec)
         return order_id

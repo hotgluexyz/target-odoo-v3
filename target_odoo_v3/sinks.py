@@ -360,7 +360,7 @@ class PurchaseInvoices(OdooV3Sink):
                             try:
                                 sub_total = float(rec["sub_total_price"])
                                 quantity = float(rec["quantity"])
-                                if quantity > 0:  # Avoid division by zero
+                                if quantity > 0:
                                     line_rec["price_unit"] = sub_total / quantity
                                 else:
                                     self.logger.warning(f"Invalid quantity {quantity} for product {rec.get('product_remoteId')}, skipping price calculation")

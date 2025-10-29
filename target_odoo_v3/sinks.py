@@ -356,8 +356,16 @@ class PurchaseInvoices(OdooV3Sink):
                         line_rec["product_qty"] = rec["quantity"]
                         
                         # Calculate unit price from sub_total_price
-                        if rec.get("sub_total_price"):
-                            line_rec["price_unit"] = rec["sub_total_price"] / rec["quantity"]
+                        if rec.get("sub_total_price") and rec.get("quantity"):
+                            try:
+                                sub_total = float(rec["sub_total_price"])
+                                quantity = float(rec["quantity"])
+                                if quantity > 0:  # Avoid division by zero
+                                    line_rec["price_unit"] = sub_total / quantity
+                                else:
+                                    self.logger.warning(f"Invalid quantity {quantity} for product {rec.get('product_remoteId')}, skipping price calculation")
+                            except (ValueError, TypeError) as e:
+                                self.logger.warning(f"Error calculating unit price for product {rec.get('product_remoteId')}: {e}")
                         
                         # Post the line to Odoo
                         self._post_odoo(f"{stream_name}.line", line_rec)

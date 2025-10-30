@@ -127,6 +127,7 @@ class OdooV3Sink(HotglueSink):
             return res
         except xmlrpc.client.Fault as error:
             self.logger.warning(error.faultString)
+            raise error
 
     # TODO apparently duplicate function was not required. Keeping it for other jobs stability
     def _update_odoo(

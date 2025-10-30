@@ -366,9 +366,36 @@ class PurchaseInvoices(OdooV3Sink):
                                     self.logger.warning(f"Invalid quantity {quantity} for product {rec.get('product_remoteId')}, skipping price calculation")
                             except (ValueError, TypeError) as e:
                                 self.logger.warning(f"Error calculating unit price for product {rec.get('product_remoteId')}: {e}")
+
+                        # Add delivery date required by Odoo (date_planned)
+                        # Prefer the order date; fallback to transaction_date; else today
+                        try:
+                            if record_processed.get("date_order"):
+                                line_rec["date_planned"] = record_processed.get("date_order")
+                            elif record.get("transaction_date"):
+                                line_rec["date_planned"] = parse(record.get("transaction_date")).strftime("%Y-%m-%d")
+                            else:
+                                from datetime import date
+                                line_rec["date_planned"] = date.today().strftime("%Y-%m-%d")
+                        except Exception:
+                            from datetime import date
+                            line_rec["date_planned"] = date.today().strftime("%Y-%m-%d")
+
+                        # Add Unit of Measure (product_uom) when available
+                        try:
+                            prod_full = self.read_odoo("product.product", product["id"], fields=["uom_id"])  # returns list of dicts
+                            if prod_full and prod_full[0].get("uom_id"):
+                                # uom_id is [id, name]; set Many2one by id
+                                line_rec["product_uom"] = prod_full[0]["uom_id"][0]
+                        except Exception as e:
+                            self.logger.debug(f"Could not fetch product UoM for product_id={product['id']}: {e}")
                         
                         # Post the line to Odoo
-                        self._post_odoo(f"{stream_name}.line", line_rec)
+                        created_line_id = self._post_odoo(f"{stream_name}.line", line_rec)
+                        if created_line_id:
+                            self.logger.info(f"Created purchase.order.line id={created_line_id} for order_id={order_id}")
+                        else:
+                            self.logger.warning(f"Failed to create purchase.order.line for order_id={order_id} with payload={line_rec}")
         return order_id
 
     def upsert_record(self, record: dict, context: dict):

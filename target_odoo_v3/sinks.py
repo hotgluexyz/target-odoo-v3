@@ -391,7 +391,9 @@ class PurchaseOrder(OdooV3Sink):
     def map_purchase_order(self, record):
         #get flag export_buy_orders_as_draft from config
         export_buy_orders_as_draft = self.config.get("export_buy_orders_as_draft", False)
-        if not export_buy_orders_as_draft:
+        if export_buy_orders_as_draft:
+            record_processed = {"state": "draft"}
+        else:
             record_processed = {"state": "purchase"}
             
         # Get the supplier in odoo

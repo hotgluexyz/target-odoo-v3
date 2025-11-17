@@ -299,7 +299,9 @@ class PurchaseInvoices(OdooV3Sink):
     name = "BuyOrders"
 
     def map_purchase_order(self, record):
-        record_processed = {"state": "purchase"}
+        export_buy_orders_as_draft = self.config.get("export_buy_orders_as_draft", False)
+        if not export_buy_orders_as_draft:
+            record_processed = {"state": "purchase"}  
 
         if record.get("supplier_remoteId"):
             record_processed["partner_id"] = record["supplier_remoteId"]

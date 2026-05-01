@@ -528,7 +528,11 @@ class Invoices(OdooV3Sink):
         if len(partner) > 0:
             record_processed["partner_id"] = partner[0]["id"]
         else:
-            self.logger.warning(f"Partner '{record.get(contact_key)}' not found in Odoo. Bill will be created without a vendor.")
+            party_type = "vendor" if contact_key == "vendorName" else "customer"
+            self.logger.warning(
+                f"Partner '{record.get(contact_key)}' not found in Odoo. "
+                f"Record will be created without a {party_type}."
+            )
 
         # Parse dates into correct format
         due_date = parse(record["dueDate"]).strftime("%Y-%m-%d")
@@ -597,9 +601,16 @@ class Invoices(OdooV3Sink):
                     account_id = self.find_account(rec["accountName"])
                 else:
                     account_id = []
+                # Fall back to the deployment-level default account from target config
                 if len(account_id) == 0:
-                    print("Valid Account name required. Skipping..")
-                    # skip the line
+                    default_account = self.config.get("default_account", "")
+                    if default_account:
+                        account_id = self.find_account(default_account, "code")
+                if len(account_id) == 0:
+                    self.logger.warning(
+                        f"No account resolved for line '{rec.get('productName')}' "
+                        f"(no accountNumber/accountName on the record and default_account is not set). Skipping."
+                    )
                     continue
                 account_id = account_id[0]["id"]
                 if product.get("id"):

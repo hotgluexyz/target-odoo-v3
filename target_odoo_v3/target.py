@@ -29,14 +29,6 @@ class TargetOdooV3(TargetHotglue):
         th.Property("url", th.StringType, required=True),
         th.Property("username", th.StringType, required=True),
         th.Property("password", th.StringType, required=True),
-        th.Property(
-            "default_account",
-            th.StringType,
-            description=(
-                "Odoo GL account code (e.g. '1.01.03.04.05') applied to every "
-                "vendor bill line when the payload does not carry one."
-            ),
-        ),
     ).to_dict()
 
 

@@ -600,10 +600,20 @@ class Invoices(OdooV3Sink):
                     result = self.find_account(rec["accountNumber"], "code")
                     if result:
                         account_id = result[0]["id"]
+                    else:
+                        self.logger.warning(
+                            f"Account code '{rec['accountNumber']}' not found in Odoo for line "
+                            f"'{rec.get('productName')}'. Odoo will assign its default account."
+                        )
                 elif rec.get("accountName"):
                     result = self.find_account(rec["accountName"])
                     if result:
                         account_id = result[0]["id"]
+                    else:
+                        self.logger.warning(
+                            f"Account name '{rec['accountName']}' not found in Odoo for line "
+                            f"'{rec.get('productName')}'. Odoo will assign its default account."
+                        )
                 if product.get("id"):
                     line_rec["product_id"] = product.get("id")
 

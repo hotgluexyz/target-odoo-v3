@@ -23,7 +23,6 @@ pipx install target-odoo-v3
 | `export_buy_orders_as_draft` | No | When `true`, purchase orders are created in `draft` state instead of `purchase`. Defaults to `false`. | `true` |
 | `verify_ref` | No | When `true`, invoices and bills whose reference already exists in Odoo are skipped. Defaults to `false`. | `true` |
 | `input_path` | No | Directory where attachment files are looked up before uploading to Odoo. Defaults to `./`. | `/data/attachments` |
-| `default_account` | No | Odoo GL account code applied to every vendor bill line when the payload does not carry one. | `1.01.03.04.05` |
 
 ```json
 {

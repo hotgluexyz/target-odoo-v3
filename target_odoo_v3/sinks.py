@@ -595,24 +595,15 @@ class Invoices(OdooV3Sink):
                     product = product[0]
                 else:
                     product = {}
+                account_id = None
                 if rec.get("accountNumber"):
-                    account_id = self.find_account(rec["accountNumber"], "code")
+                    result = self.find_account(rec["accountNumber"], "code")
+                    if result:
+                        account_id = result[0]["id"]
                 elif rec.get("accountName"):
-                    account_id = self.find_account(rec["accountName"])
-                else:
-                    account_id = []
-                # Fall back to the deployment-level default account from target config
-                if len(account_id) == 0:
-                    default_account = self.config.get("default_account", "")
-                    if default_account:
-                        account_id = self.find_account(default_account, "code")
-                if len(account_id) == 0:
-                    self.logger.warning(
-                        f"No account resolved for line '{rec.get('productName')}' "
-                        f"(no accountNumber/accountName on the record and default_account is not set). Skipping."
-                    )
-                    continue
-                account_id = account_id[0]["id"]
+                    result = self.find_account(rec["accountName"])
+                    if result:
+                        account_id = result[0]["id"]
                 if product.get("id"):
                     line_rec["product_id"] = product.get("id")
 
@@ -654,7 +645,8 @@ class Invoices(OdooV3Sink):
                     if "id" in tax_detail:
                         line_rec["tax_ids"] = [tax_detail["id"]]  # [3,34]
 
-                line_rec["account_id"] = account_id
+                if account_id is not None:
+                    line_rec["account_id"] = account_id
                 if rec.get("product_uom_qty"):
                     line_rec["product_uom_qty"] = int(rec["product_uom_qty"])
                 # Post the line to Odoo

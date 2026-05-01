@@ -14,26 +14,25 @@ pipx install target-odoo-v3
 
 ## Configuration
 
-### Accepted Config Options
+| Name | Required | Description | Example |
+|---|---|---|---|
+| `url` | Yes | Base URL of your Odoo instance. | `https://mycompany.odoo.com` |
+| `db` | Yes | Name of the Odoo database to connect to. | `mycompany` |
+| `username` | Yes | Odoo login username (usually an email address). | `admin@mycompany.com` |
+| `password` | Yes | Odoo login password or API key. | `xxxxxxxxxxxxxxxxx` |
+| `export_buy_orders_as_draft` | No | When `true`, purchase orders are created in `draft` state instead of `purchase`. Defaults to `false`. | `true` |
+| `verify_ref` | No | When `true`, invoices and bills whose reference already exists in Odoo are skipped. Defaults to `false`. | `true` |
+| `input_path` | No | Directory where attachment files are looked up before uploading to Odoo. Defaults to `./`. | `/data/attachments` |
+| `default_account` | No | Odoo GL account code applied to every vendor bill line when the payload does not carry one. | `1.01.03.04.05` |
 
-- [ ] `Developer TODO:` Provide a list of config options accepted by the target.
-
-A full list of supported settings and capabilities for this
-target is available by running:
-
-```bash
-target-odoo-v3 --about
+```json
+{
+  "url": "https://mycompany.odoo.com",
+  "db": "mycompany",
+  "username": "admin@mycompany.com",
+  "password": "xxxxxxxxxxxxxxxxx"
+}
 ```
-
-### Configure using environment variables
-
-This Singer target will automatically import any environment variables within the working directory's
-`.env` if the `--config=ENV` is provided, such that config values will be considered if a matching
-environment variable is set either in the terminal context or in the `.env` file.
-
-### Source Authentication and Authorization
-
-- [ ] `Developer TODO:` If your target requires special access on the source system, or any special authentication requirements, provide those here.
 
 ## Usage
 

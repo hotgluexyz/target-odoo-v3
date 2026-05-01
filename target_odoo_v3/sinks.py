@@ -52,18 +52,20 @@ class OdooV3Sink(HotglueSink):
             self.db, self.uid, str(self.password), stream_name, "search_read", filters
         )
 
-    def find_parnter(self, parnter_name):
-        filters = [[["name", "=", parnter_name]]]
+    def find_partner(self, partner_name):
+        filters = [[["name", "=", partner_name]]]
         return self.query_odoo("res.partner", filters)
 
     def find_product(self, field_value, field="name"):
         filters = [[[field, "=", field_value]]]
         return self.query_odoo("product.product", filters)
 
-    def find_company(self, name, company_type=None):
-        filters = [[["name", "=", name]]]
-        if company_type is not None:
-            filters[0].append(["company_type", "=", company_type])
+    def find_product_by_name_or_sku(self, name: str):
+        """Look up a product by name or its default_code / SKU."""
+        return self.find_product(name, field="name") or self.find_product(name, field="default_code")
+
+    def find_company(self, name):
+        filters = [[["name", "=", name], ["is_company", "=", True]]]
         return self.query_odoo("res.partner", filters)
 
     def find_account(self, name, lookup_key="name"):
@@ -251,9 +253,9 @@ class Vendors(OdooV3Sink):
     def process_vendors(self, record):
         mapping = UnifiedMapping()
         payload = mapping.prepare_payload(record, "vendors")
-        payload["company_type"] = "company"
+        payload["is_company"] = True
         payload["supplier_rank"] = 1
-        lookup = self.find_company(payload["name"], payload["company_type"])
+        lookup = self.find_company(payload["name"])
         if len(lookup) > 0:
             self.logger.info(f"Supplier {payload['name']} already exists. Skipping...")
             return None
@@ -309,7 +311,7 @@ class PurchaseInvoices(OdooV3Sink):
             record_processed["partner_id"] = record["supplier_remoteId"]
         else:
             # Get the supplier in odoo
-            partner = self.find_parnter(record["supplier_name"])
+            partner = self.find_partner(record["supplier_name"])
             if len(partner) > 0:
                 record_processed["partner_id"] = partner[0]["id"]
 
@@ -395,7 +397,7 @@ class PurchaseOrder(OdooV3Sink):
     def map_purchase_order(self, record):
         record_processed = {"state": "purchase"}
         # Get the supplier in odoo
-        partner = self.find_parnter(record["supplierName"])
+        partner = self.find_partner(record["supplierName"])
         if len(partner) > 0:
             record_processed["partner_id"] = partner[0]["id"]
 
@@ -522,9 +524,11 @@ class Invoices(OdooV3Sink):
     def map_invoice(self, record, contact_key):
         record_processed = {"state": record["status"].lower()}
         # Get the supplier in odoo
-        partner = self.find_parnter(record[contact_key])
+        partner = self.find_partner(record[contact_key])
         if len(partner) > 0:
             record_processed["partner_id"] = partner[0]["id"]
+        else:
+            self.logger.warning(f"Partner '{record.get(contact_key)}' not found in Odoo. Bill will be created without a vendor.")
 
         # Parse dates into correct format
         due_date = parse(record["dueDate"]).strftime("%Y-%m-%d")
@@ -582,7 +586,7 @@ class Invoices(OdooV3Sink):
                 line_rec = {}
                 # line_rec["move_id"] = order_id
                 # Get matching product in Odoo
-                product = self.find_product(rec["productName"])
+                product = self.find_product_by_name_or_sku(rec["productName"])
                 if len(product) > 0:
                     product = product[0]
                 else:

@@ -770,7 +770,10 @@ class PurchaseAcknowledgments(OdooV3Sink):
                 f"PO '{po_number}' already confirmed (state={po['state']}). Skipping confirmation."
             )
         else:
-            self._update_odoo("purchase.order", {}, update_id=po_id, action="button_confirm")
+            confirmed = self._update_odoo("purchase.order", {}, update_id=po_id, action="button_confirm")
+            if confirmed is None:
+                self.logger.warning(f"Failed to confirm PO '{po_number}'.")
+                return None
             self.logger.info(f"PO '{po_number}' confirmed.")
 
         self._update_odoo("purchase.order", {"acknowledged": True}, update_id=po_id)
@@ -858,7 +861,7 @@ class IncomingShipments(OdooV3Sink):
             [[["picking_id", "=", picking_id]]],
             {"fields": ["id", "product_id", "product_uom_qty", "quantity"]},
         )
-        return {m["product_id"][0]: m for m in moves}
+        return {m["product_id"][0]: m for m in moves if m.get("product_id")}
 
     def process_shipment(self, record: dict):
         po_number = record.get("purchaseOrderNumber")
@@ -914,13 +917,16 @@ class IncomingShipments(OdooV3Sink):
 
         validate = self.config.get("validate_shipment", True)
         if validate:
-            self._update_odoo(
+            validated = self._update_odoo(
                 "stock.picking",
                 {},
                 update_id=picking_id,
                 action="button_validate",
                 context={"skip_backorder": True, "lang": "en_US"},
             )
+            if validated is None:
+                self.logger.warning(f"Failed to validate receipt {picking['name']}.")
+                return None
             self.logger.info(f"Receipt {picking['name']} validated.")
 
         return picking_id

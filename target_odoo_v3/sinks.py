@@ -81,6 +81,10 @@ class OdooV3Sink(HotglueSink):
         filters = [[[field, "=", val]]]
         return self.query_odoo("account.move", filters)
 
+    def find_purchase_order(self, po_number):
+        filters = [[["name", "=", po_number]]]
+        return self.query_odoo("purchase.order", filters)
+
     def get_odoo_taxes(self, name=None):
         filters = []
         if name is not None:
@@ -150,7 +154,7 @@ class OdooV3Sink(HotglueSink):
             record = [[update_id], record]
         else:
             record = [record]
-        if action == "action_post":
+        if action in ("action_post", "button_confirm", "button_validate"):
             record = [[update_id]]
         try:
             res = models.execute_kw(
@@ -733,6 +737,201 @@ class Bills(Invoices):
                 state_updates["is_updated"] = True
             else:
                 state_updates["success"] = True
+        else:
+            state_updates["success"] = False
+            status = False
+        return id, status, state_updates
+
+
+class PurchaseAcknowledgments(OdooV3Sink):
+    """Finds an existing purchase.order by name, confirms it (purchase state),
+    and marks it as acknowledged. Optionally updates line quantities and unit
+    prices when the record carries revised values."""
+
+    endpoint = "PurchaseAcknowledgments"
+    name = "PurchaseAcknowledgments"
+
+    def process_acknowledgment(self, record: dict):
+        po_number = record.get("purchaseOrderNumber")
+        if not po_number:
+            self.logger.warning("No purchaseOrderNumber in record. Skipping.")
+            return None
+
+        pos = self.find_purchase_order(po_number)
+        if not pos:
+            self.logger.warning(f"PO '{po_number}' not found in Odoo. Skipping.")
+            return None
+
+        po = pos[0]
+        po_id = po["id"]
+
+        if po.get("state") in ("purchase", "done"):
+            self.logger.info(
+                f"PO '{po_number}' already confirmed (state={po['state']}). Skipping confirmation."
+            )
+        else:
+            self._update_odoo("purchase.order", {}, update_id=po_id, action="button_confirm")
+            self.logger.info(f"PO '{po_number}' confirmed.")
+
+        self._update_odoo("purchase.order", {"acknowledged": True}, update_id=po_id)
+        self.logger.info(f"PO '{po_number}' marked as acknowledged.")
+
+        line_items = record.get("lineItems")
+        if line_items:
+            if isinstance(line_items, str):
+                line_items = json.loads(line_items)
+
+            po_lines = self.query_odoo(
+                "purchase.order.line",
+                [[["order_id", "=", po_id]]],
+            )
+            lines_by_product = {
+                line["product_id"][0]: line
+                for line in po_lines
+                if line.get("product_id")
+            }
+
+            for item in line_items:
+                name = item.get("productName") or item.get("sku") or ""
+                products = self.find_product_by_name_or_sku(name)
+                if not products:
+                    self.logger.warning(f"Product '{name}' not found. Skipping line.")
+                    continue
+                product_id = products[0]["id"]
+                if product_id not in lines_by_product:
+                    self.logger.warning(
+                        f"Product id={product_id} not on PO '{po_number}'. Skipping line."
+                    )
+                    continue
+                update = {}
+                if item.get("quantity"):
+                    update["product_qty"] = float(item["quantity"])
+                if item.get("unitPrice"):
+                    update["price_unit"] = float(item["unitPrice"])
+                if update:
+                    self._update_odoo(
+                        "purchase.order.line", update, update_id=lines_by_product[product_id]["id"]
+                    )
+
+        return po_id
+
+    def upsert_record(self, record: dict, context: dict):
+        status = True
+        state_updates = dict()
+
+        id = self.process_acknowledgment(record)
+        if id:
+            state_updates["success"] = True
+        else:
+            state_updates["success"] = False
+            status = False
+        return id, status, state_updates
+
+
+class IncomingShipments(OdooV3Sink):
+    """Finds the open stock.picking receipt linked to a purchase.order, sets the
+    done quantities on each stock.move from the record's line items, and validates
+    the receipt. Set validate_shipment=false in config to leave it in Ready state
+    for manual confirmation in the warehouse."""
+
+    endpoint = "IncomingShipments"
+    name = "IncomingShipments"
+
+    def _find_open_receipt(self, po_id: int):
+        return self.models.execute_kw(
+            self.db,
+            self.uid,
+            str(self.password),
+            "stock.picking",
+            "search_read",
+            [[["purchase_id", "=", po_id], ["state", "not in", ["done", "cancel"]]]],
+            {"fields": ["id", "name", "state", "move_ids"]},
+        )
+
+    def _get_moves(self, picking_id: int):
+        moves = self.models.execute_kw(
+            self.db,
+            self.uid,
+            str(self.password),
+            "stock.move",
+            "search_read",
+            [[["picking_id", "=", picking_id]]],
+            {"fields": ["id", "product_id", "product_uom_qty", "quantity"]},
+        )
+        return {m["product_id"][0]: m for m in moves}
+
+    def process_shipment(self, record: dict):
+        po_number = record.get("purchaseOrderNumber")
+        if not po_number:
+            self.logger.warning("No purchaseOrderNumber in record. Skipping.")
+            return None
+
+        pos = self.find_purchase_order(po_number)
+        if not pos:
+            self.logger.warning(f"PO '{po_number}' not found in Odoo. Skipping.")
+            return None
+
+        po_id = pos[0]["id"]
+        pickings = self._find_open_receipt(po_id)
+        if not pickings:
+            self.logger.warning(f"No open receipt found for PO '{po_number}'. Skipping.")
+            return None
+
+        picking = pickings[0]
+        picking_id = picking["id"]
+        self.logger.info(f"Found receipt {picking['name']} (id={picking_id}) for PO '{po_number}'.")
+
+        line_items = record.get("lineItems")
+        if line_items:
+            if isinstance(line_items, str):
+                line_items = json.loads(line_items)
+
+            moves_by_product = self._get_moves(picking_id)
+
+            for item in line_items:
+                name = item.get("productName") or item.get("sku") or ""
+                products = self.find_product_by_name_or_sku(name)
+                if not products:
+                    self.logger.warning(f"Product '{name}' not found. Skipping line.")
+                    continue
+                product_id = products[0]["id"]
+                if product_id not in moves_by_product:
+                    self.logger.warning(
+                        f"Product id={product_id} has no move in receipt {picking['name']}. Skipping."
+                    )
+                    continue
+                qty = float(item.get("quantity", 0))
+                if qty > 0:
+                    move_id = moves_by_product[product_id]["id"]
+                    self._update_odoo("stock.move", {"quantity": qty}, update_id=move_id)
+
+        if record.get("trackingNumber"):
+            self._update_odoo(
+                "stock.picking",
+                {"carrier_tracking_ref": record["trackingNumber"]},
+                update_id=picking_id,
+            )
+
+        validate = self.config.get("validate_shipment", True)
+        if validate:
+            self._update_odoo(
+                "stock.picking",
+                {},
+                update_id=picking_id,
+                action="button_validate",
+                context={"skip_backorder": True, "lang": "en_US"},
+            )
+            self.logger.info(f"Receipt {picking['name']} validated.")
+
+        return picking_id
+
+    def upsert_record(self, record: dict, context: dict):
+        status = True
+        state_updates = dict()
+
+        id = self.process_shipment(record)
+        if id:
+            state_updates["success"] = True
         else:
             state_updates["success"] = False
             status = False

@@ -11,6 +11,8 @@ from target_odoo_v3.sinks import (
     PurchaseInvoices,
     Invoices,
     Bills,
+    PurchaseAcknowledgments,
+    IncomingShipments,
 )
 
 
@@ -22,6 +24,8 @@ class TargetOdooV3(TargetHotglue):
         PurchaseInvoices,
         Invoices,
         Bills,
+        PurchaseAcknowledgments,
+        IncomingShipments,
     ]
     name = "target-odoo-v3"
     config_jsonschema = th.PropertiesList(

@@ -788,11 +788,10 @@ class PurchaseAcknowledgments(OdooV3Sink):
                 "purchase.order.line",
                 [[["order_id", "=", po_id]]],
             )
-            lines_by_product = {
-                line["product_id"][0]: line
-                for line in po_lines
-                if line.get("product_id")
-            }
+            lines_by_product = {}
+            for line in po_lines:
+                if line.get("product_id"):
+                    lines_by_product.setdefault(line["product_id"][0], []).append(line)
 
             for item in line_items:
                 name = item.get("productName") or item.get("sku") or ""
@@ -812,9 +811,10 @@ class PurchaseAcknowledgments(OdooV3Sink):
                 if item.get("unitPrice"):
                     update["price_unit"] = float(item["unitPrice"])
                 if update:
-                    self._update_odoo(
-                        "purchase.order.line", update, update_id=lines_by_product[product_id]["id"]
-                    )
+                    for line in lines_by_product[product_id]:
+                        self._update_odoo(
+                            "purchase.order.line", update, update_id=line["id"]
+                        )
 
         return po_id
 
@@ -861,7 +861,11 @@ class IncomingShipments(OdooV3Sink):
             [[["picking_id", "=", picking_id]]],
             {"fields": ["id", "product_id", "product_uom_qty", "quantity"]},
         )
-        return {m["product_id"][0]: m for m in moves if m.get("product_id")}
+        moves_by_product = {}
+        for m in moves:
+            if m.get("product_id"):
+                moves_by_product.setdefault(m["product_id"][0], []).append(m)
+        return moves_by_product
 
     def process_shipment(self, record: dict):
         po_number = record.get("purchaseOrderNumber")
@@ -905,8 +909,8 @@ class IncomingShipments(OdooV3Sink):
                     continue
                 qty = float(item.get("quantity", 0))
                 if qty > 0:
-                    move_id = moves_by_product[product_id]["id"]
-                    self._update_odoo("stock.move", {"quantity": qty}, update_id=move_id)
+                    for move in moves_by_product[product_id]:
+                        self._update_odoo("stock.move", {"quantity": qty}, update_id=move["id"])
 
         if record.get("trackingNumber"):
             self._update_odoo(
